@@ -10,43 +10,25 @@
 #define MY_NOTIFY (WM_NOTIFY + 4)
 #define IDC_FILTER_EDIT 1000
 #define IDC_BUTTON_FIND 2000
-#define IDC_BUTTON_REFRESH 2001
+#define IDC_BUTTON_PREV 2001
+#define IDC_BUTTON_NEXT 2002
 
 CONST WCHAR MainClassName[] = TEXT("MainClass");
 CONST WCHAR MainWindowName[] = TEXT("Window");
 
 HWND hMainWindow, hListView;
 LVHITTESTINFO htInfo;
-std::vector<PhonebookRecord*> phoneBook;
+std::vector<PhonebookRecord> phoneBook;
 PhonebookRecord searchRecord;
 
 LRESULT CALLBACK MainWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 LRESULT CALLBACK ListViewProc(HWND hListView, UINT uMsg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData);
 LRESULT CALLBACK FilterEditProc(HWND hEdit, UINT uMsg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData);
-LRESULT CALLBACK DynamicEditProc(HWND hEdit, UINT uMsg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData);
 HWND CreateListView(HWND hWndParent, std::vector<std::wstring> columsName);
 VOID ClearListView(HWND hListView);
-VOID InsertListViewItems(HWND hListView, std::vector<PhonebookRecord*> items);
+VOID InsertListViewItems(HWND hListView);
 VOID CreateFilter(HWND hWndParent, std::vector<std::wstring> filterName);
 std::wstring GetText(HWND hEdit);
-
-LRESULT CALLBACK DynamicEditProc(HWND hEdit, UINT uMsg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData)
-{
-	switch (uMsg) {
-	case WM_KEYDOWN:
-	{
-		if (wParam == VK_RETURN) {
-			ChangeData(phoneBook[htInfo.iItem], htInfo.iSubItem, GetText(hEdit));
-			DestroyWindow(hEdit);
-		}
-		break;
-	}
-	case WM_KILLFOCUS:
-		DestroyWindow(hEdit);
-		break;
-	}
-	return DefSubclassProc(hEdit, uMsg, wParam, lParam);
-}
 
 LRESULT CALLBACK FilterEditProc(HWND hEdit, UINT uMsg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData)
 {
@@ -121,40 +103,25 @@ LRESULT CALLBACK ListViewProc(HWND hListView, UINT uMsg, WPARAM wParam, LPARAM l
 	switch (uMsg) {
 	case MY_NOTIFY:
 		switch (((LPNMHDR)lParam)->code) {
-		case NM_DBLCLK:
-		{
-			HWND hEdit;
-			RECT rcItem;
-
-			htInfo.pt = ((LPNMITEMACTIVATE)lParam)->ptAction;
-			ListView_SubItemHitTest(hListView, &htInfo);
-			if (htInfo.iItem != -1) {
-				ListView_GetSubItemRect(hListView, htInfo.iItem, htInfo.iSubItem, LVIR_LABEL, &rcItem);
-				hEdit = CreateWindowEx(WS_EX_CLIENTEDGE, WC_EDIT, TEXT(""), WS_CHILD | WS_VISIBLE, rcItem.left, rcItem.top, rcItem.right - rcItem.left, rcItem.bottom - rcItem.top, hListView, NULL, GetModuleHandle(NULL), NULL);
-				SetWindowSubclass(hEdit, DynamicEditProc, 2, 0);
-				SetFocus(hEdit);
-			}
-			break;
-		}
 		case LVN_GETDISPINFO:
 		{
 			plvdi = (NMLVDISPINFO*)lParam;
-			PhonebookRecord* addedItem = phoneBook[plvdi->item.iItem];
+			PhonebookRecord* addedItem = &phoneBook[plvdi->item.iItem];
 			switch (plvdi->item.iSubItem) {
 			case 0:
-				plvdi->item.pszText = const_cast<LPWSTR>(addedItem->telephone);
+				plvdi->item.pszText = addedItem->telephone;
 				break;
 			case 1:
-				plvdi->item.pszText = const_cast<LPWSTR>(addedItem->lastName);
+				plvdi->item.pszText = addedItem->lastName;
 				break;
 			case 2:
-				plvdi->item.pszText = const_cast<LPWSTR>(addedItem->firstName);
+				plvdi->item.pszText = addedItem->firstName;
 				break;
 			case 3:
-				plvdi->item.pszText = const_cast<LPWSTR>(addedItem->patronymic);
+				plvdi->item.pszText = addedItem->patronymic;
 				break;
 			case 4:
-				plvdi->item.pszText = const_cast<LPWSTR>(addedItem->streetName);
+				plvdi->item.pszText = addedItem->streetName;
 				break;
 			case 5:
 				temp = std::to_wstring(addedItem->houseNumber);
@@ -183,7 +150,8 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 	if (uMsg == WM_CREATE) {
 		hListView = CreateListView(hWnd, columnsName);
-		InsertListViewItems(hListView, GetPhonebook());
+		phoneBook = GetPhonebook();
+		InsertListViewItems(hListView);
 		CreateFilter(hWnd, columnsName);
 		ShowWindow(hListView, SW_SHOWDEFAULT);
 	}
@@ -195,16 +163,23 @@ LRESULT CALLBACK MainWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			switch (LOWORD(wParam)) {
 			case IDC_BUTTON_FIND:
 			{
-				std::vector<PhonebookRecord*> search = Search(searchRecord);
-				if (search != phoneBook) {
+				if (Search(searchRecord, &phoneBook)) {
 					ClearListView(hListView);
-					InsertListViewItems(hListView, search);
+					InsertListViewItems(hListView);
 				}
 				break;
 			}
-			case IDC_BUTTON_REFRESH:
-				ClearListView(hListView);
-				InsertListViewItems(hListView, phoneBook);
+			case IDC_BUTTON_PREV:
+				if (Update(PREV ,&phoneBook)) {
+					ClearListView(hListView);
+					InsertListViewItems(hListView);
+				}
+				break;
+			case IDC_BUTTON_NEXT:
+				if (Update(NEXT, &phoneBook)) {
+					ClearListView(hListView);
+					InsertListViewItems(hListView);
+				}
 				break;
 			}
 			break;
@@ -253,7 +228,9 @@ HWND CreateListView(HWND hWndParent, std::vector<std::wstring> columsName)
 	LVCOLUMN lvc;
 
 	GetClientRect(hWndParent, &rcClient);
-	hListView = CreateWindowEx(NULL, WC_LISTVIEW, TEXT(""), WS_CHILD | LVS_REPORT, 0, 0, rcClient.right - rcClient.left - 150, rcClient.bottom - rcClient.top, hWndParent, NULL, GetModuleHandle(NULL), NULL);
+	hListView = CreateWindowEx(NULL, WC_LISTVIEW, TEXT(""), WS_CHILD | LVS_REPORT, 0, 0, rcClient.right - rcClient.left - 150, rcClient.bottom - rcClient.top - 62, hWndParent, NULL, GetModuleHandle(NULL), NULL);
+	CreateWindowEx(WS_EX_CLIENTEDGE, WC_BUTTON, TEXT("PREV"), WS_CHILD | WS_VISIBLE, 0, rcClient.bottom - rcClient.top - 50, 50, 20, hWndParent, (HMENU)IDC_BUTTON_PREV, GetModuleHandle(NULL), NULL);
+	CreateWindowEx(WS_EX_CLIENTEDGE, WC_BUTTON, TEXT("NEXT"), WS_CHILD | WS_VISIBLE, rcClient.right - rcClient.left - 200, rcClient.bottom - rcClient.top - 50, 50, 20, hWndParent, (HMENU)IDC_BUTTON_NEXT, GetModuleHandle(NULL), NULL);
 	SetWindowSubclass(hListView, ListViewProc, 0, 0);
 
 	GetClientRect(hListView, &rcListView);
@@ -272,7 +249,7 @@ VOID ClearListView(HWND hListView)
 	ListView_DeleteAllItems(hListView);
 }
 
-VOID InsertListViewItems(HWND hListView, std::vector<PhonebookRecord*> items)
+VOID InsertListViewItems(HWND hListView)
 {
 	LVITEM lvI;
 
@@ -280,7 +257,6 @@ VOID InsertListViewItems(HWND hListView, std::vector<PhonebookRecord*> items)
 	lvI.pszText = LPSTR_TEXTCALLBACK;
 	lvI.iSubItem = 0;
 
-	phoneBook = items;
 	for (int i = 0; i < phoneBook.size(); i++) {
 		lvI.iItem = i;
 		ListView_InsertItem(hListView, &lvI);
@@ -299,7 +275,6 @@ VOID CreateFilter(HWND hWndParent, std::vector<std::wstring> filterName)
 		Edit_SetCueBannerText(hEdit, filterName[i].c_str());
 	}
 	CreateWindowEx(WS_EX_CLIENTEDGE, WC_BUTTON, TEXT("Find"), WS_CHILD | WS_VISIBLE, rcClient.right - 130, 40 * (filterName.size() + 1), 110, 20, hWndParent, (HMENU)IDC_BUTTON_FIND, GetModuleHandle(NULL), NULL);
-	CreateWindowEx(WS_EX_CLIENTEDGE, WC_BUTTON, TEXT("Refresh"), WS_CHILD | WS_VISIBLE, rcClient.right - 130, 40 * (filterName.size() + 1) + 30, 110, 20, hWndParent, (HMENU)IDC_BUTTON_REFRESH, GetModuleHandle(NULL), NULL);
 }
 
 std::wstring GetText(HWND hEdit)
