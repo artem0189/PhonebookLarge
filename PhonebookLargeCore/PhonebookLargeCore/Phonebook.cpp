@@ -72,6 +72,7 @@ PHONEBOOKCORE_API BOOL Update(Direction direction, std::vector<PhonebookRecord>*
         if (offsets.size() > 2) {
             offsets.pop();
             offsets.pop();
+            lpvMem = SetFilePointer(isSearch ? hSearchMapObject : hMainMapObject, lpvMem, (offsets.top() / sysinfo.dwAllocationGranularity) * sysinfo.dwAllocationGranularity);
         }
         else {
             return FALSE;
@@ -219,13 +220,8 @@ PhonebookRecord ParseLine(std::wstring line)
 
 BYTE GetByte(DWORD offset)
 {
-    if (offset % 65536 == 0) {
-        if (isSearch) {
-            lpvMem = SetFilePointer(hSearchMapObject, lpvMem, offset);
-        }
-        else {
-            lpvMem = SetFilePointer(hMainMapObject, lpvMem, offset);
-        }
+    if (offset % sysinfo.dwAllocationGranularity == 0) {
+        lpvMem = SetFilePointer(isSearch ? hSearchMapObject : hMainMapObject, lpvMem, offset);
     }
     return *(BYTE*)((DWORD)lpvMem + (offset % 65536));
 }
